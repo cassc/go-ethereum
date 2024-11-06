@@ -276,52 +276,56 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 		}
 	}
 
-	// Prepare the EVM.
-	txContext := core.NewEVMTxContext(msg)
-	context := core.NewEVMBlockContext(block.Header(), nil, &t.json.Env.Coinbase)
-	context.GetHash = vmTestBlockHash
-	context.BaseFee = baseFee
-	context.Random = nil
-	if t.json.Env.Difficulty != nil {
-		context.Difficulty = new(big.Int).Set(t.json.Env.Difficulty)
-	}
-	if config.IsLondon(new(big.Int)) && t.json.Env.Random != nil {
-		rnd := common.BigToHash(t.json.Env.Random)
-		context.Random = &rnd
-		context.Difficulty = big.NewInt(0)
-	}
-	if config.IsCancun(new(big.Int), block.Time()) && t.json.Env.ExcessBlobGas != nil {
-		context.BlobBaseFee = eip4844.CalcBlobFee(*t.json.Env.ExcessBlobGas)
-	}
-	evm := vm.NewEVM(context, txContext, st.StateDB, config, vmconfig)
-
-	if tracer := vmconfig.Tracer; tracer != nil && tracer.OnTxStart != nil {
-		tracer.OnTxStart(evm.GetVMContext(), nil, msg.From)
-	}
-	// Execute the message.
-	snapshot := st.StateDB.Snapshot()
-	gaspool := new(core.GasPool)
-	gaspool.AddGas(block.GasLimit())
-	vmRet, err := core.ApplyMessage(evm, msg, gaspool)
-	if err != nil {
-		st.StateDB.RevertToSnapshot(snapshot)
-		if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
-			evm.Config.Tracer.OnTxEnd(nil, err)
+	for i := 0; i < vmconfig.NumExecutions; i++ {
+		// Prepare the EVM.
+		txContext := core.NewEVMTxContext(msg)
+		context := core.NewEVMBlockContext(block.Header(), nil, &t.json.Env.Coinbase)
+		context.GetHash = vmTestBlockHash
+		context.BaseFee = baseFee
+		context.Random = nil
+		if t.json.Env.Difficulty != nil {
+			context.Difficulty = new(big.Int).Set(t.json.Env.Difficulty)
 		}
-	}
-	// Add 0-value mining reward. This only makes a difference in the cases
-	// where
-	// - the coinbase self-destructed, or
-	// - there are only 'bad' transactions, which aren't executed. In those cases,
-	//   the coinbase gets no txfee, so isn't created, and thus needs to be touched
-	st.StateDB.AddBalance(block.Coinbase(), new(uint256.Int), tracing.BalanceChangeUnspecified)
+		if config.IsLondon(new(big.Int)) && t.json.Env.Random != nil {
+			rnd := common.BigToHash(t.json.Env.Random)
+			context.Random = &rnd
+			context.Difficulty = big.NewInt(0)
+		}
+		if config.IsCancun(new(big.Int), block.Time()) && t.json.Env.ExcessBlobGas != nil {
+			context.BlobBaseFee = eip4844.CalcBlobFee(*t.json.Env.ExcessBlobGas)
+		}
+		evm := vm.NewEVM(context, txContext, st.StateDB, config, vmconfig)
 
-	// Commit state mutations into database.
-	root, _ = st.StateDB.Commit(block.NumberU64(), config.IsEIP158(block.Number()))
-	if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
-		receipt := &types.Receipt{GasUsed: vmRet.UsedGas}
-		tracer.OnTxEnd(receipt, nil)
+		if tracer := vmconfig.Tracer; tracer != nil && tracer.OnTxStart != nil {
+			tracer.OnTxStart(evm.GetVMContext(), nil, msg.From)
+		}
+		// Execute the message.
+		snapshot := st.StateDB.Snapshot()
+		gaspool := new(core.GasPool)
+		gaspool.AddGas(block.GasLimit())
+		vmRet, err := core.ApplyMessage(evm, msg, gaspool)
+		if err != nil {
+			st.StateDB.RevertToSnapshot(snapshot)
+			if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
+				evm.Config.Tracer.OnTxEnd(nil, err)
+			}
+		}
+		// Add 0-value mining reward. This only makes a difference in the cases
+		// where
+		// - the coinbase self-destructed, or
+		// - there are only 'bad' transactions, which aren't executed. In those cases,
+		//   the coinbase gets no txfee, so isn't created, and thus needs to be touched
+		st.StateDB.AddBalance(block.Coinbase(), new(uint256.Int), tracing.BalanceChangeUnspecified)
+
+		// Commit state mutations into database.
+		root, _ = st.StateDB.Commit(block.NumberU64(), config.IsEIP158(block.Number()))
+		if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
+			receipt := &types.Receipt{GasUsed: vmRet.UsedGas}
+			tracer.OnTxEnd(receipt, nil)
+		}
+
 	}
+
 	return st, root, err
 }
 

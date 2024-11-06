@@ -58,6 +58,7 @@ func stateTestCmd(ctx *cli.Context) error {
 		EnableReturnData: !ctx.Bool(DisableReturnDataFlag.Name),
 	}
 	var cfg vm.Config
+	cfg.NumExecutions = ctx.Int(NumExecutionsFlag.Name)
 	switch {
 	case ctx.Bool(MachineFlag.Name):
 		cfg.Tracer = logger.NewJSONLogger(config, os.Stderr)
