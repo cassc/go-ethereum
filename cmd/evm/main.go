@@ -117,6 +117,11 @@ var (
 		Usage:    "The transaction receiver (execution context)",
 		Category: flags.VMCategory,
 	}
+	NumExecutionsFlag = &cli.IntFlag{
+		Name:     "numexecutions",
+		Usage:    "Number of times to execute the code",
+		Category: flags.VMCategory,
+	}
 	DisableMemoryFlag = &cli.BoolFlag{
 		Name:     "nomemory",
 		Value:    true,
@@ -246,6 +251,7 @@ var traceFlags = []cli.Flag{
 	DumpFlag,
 	MachineFlag,
 	StatDumpFlag,
+	NumExecutionsFlag,
 	DisableMemoryFlag,
 	DisableStackFlag,
 	DisableStorageFlag,
