@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -327,17 +328,31 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 		tracer.OnTxStart(evm.GetVMContext(), nil, msg.From)
 	}
 	// Execute the message.
-	snapshot := st.StateDB.Snapshot()
-	gaspool := new(core.GasPool)
-	gaspool.AddGas(block.GasLimit())
-	vmRet, err := core.ApplyMessage(evm, msg, gaspool)
-	if err != nil {
-		st.StateDB.RevertToSnapshot(snapshot)
-		if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
-			evm.Config.Tracer.OnTxEnd(nil, err)
+	start := time.Now()
+	var vmRet *core.ExecutionResult
+	iterations := 10000
+	for i := 0; i < iterations; i++ {
+		snapshot := st.StateDB.Snapshot()
+		gaspool := new(core.GasPool)
+		gaspool.AddGas(block.GasLimit())
+		vmRet, err = core.ApplyMessage(evm, msg, gaspool)
+		if err != nil {
+			st.StateDB.RevertToSnapshot(snapshot)
+			if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
+				evm.Config.Tracer.OnTxEnd(nil, err)
+			}
+			return st, common.Hash{}, 0, err
 		}
-		return st, common.Hash{}, 0, err
+
+		if i < iterations-1 {
+			st.StateDB.RevertToSnapshot(snapshot)
+		}
+
 	}
+
+	duration := time.Since(start)
+	fmt.Printf("Ran %d iterations in %v\n", iterations, duration)
+	fmt.Printf("Average time per iteration: %v\n", duration/time.Duration(iterations))
 	// Add 0-value mining reward. This only makes a difference in the cases
 	// where
 	// - the coinbase self-destructed, or
